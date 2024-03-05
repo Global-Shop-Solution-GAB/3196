@@ -1,0 +1,345 @@
+Program.Sub.ScreenSU.Start
+Program.Sub.ScreenSU.End
+
+Program.Sub.Preflight.Start
+
+Variable.Global.sOrderNo.Declare(String)
+Variable.Global.sOrderLine.Declare(String)
+Variable.Global.sNSN.Declare(String)
+Variable.Global.iOrderType.Declare(Long,0)
+Variable.Global.sPO.Declare(String)
+Program.Sub.Preflight.End
+
+Program.Sub.Main.Start
+'SMC for Customer Aqua Chem - Quote # 1607
+'8/30/2010
+'Hooks 27620, 27630
+
+V.Local.sError.Declare(String)
+
+F.Intrinsic.Control.SetErrorHandler("Main_err")
+F.Intrinsic.Control.ClearErrors
+f.Intrinsic.Debug.InvokeDebugger
+F.Intrinsic.Debug.Stop
+F.ODBC.Connection!conx.OpenConnection(V.Ambient.PDSN,V.Ambient.PUser,V.Ambient.PPass)
+
+'F.Intrinsic.Control.If(V.Passed.009000,=,"NEW ORDER")
+'	V.Global.iOrderType.Set(0)
+'F.Intrinsic.Control.Else
+'	V.Global.iOrderType.Set(1)
+'F.Intrinsic.Control.EndIf
+
+V.Global.sOrderNo.Set(V.Passed.009001)
+V.Global.sPO.Set(V.Passed.009002)
+V.Global.sOrderLine.Set(V.Passed.009003)
+V.Global.sNSN.Set(V.Passed.009004)
+
+F.Intrinsic.Debug.Stop
+'V.Global.sOrderNo.Set("0000016")
+'V.Global.sOrderLine.Set("0010")
+'V.Global.sNSN.Set("test")
+'V.Global.sPO.Set("1")
+
+F.Intrinsic.Control.If(V.Caller.Hook,=,27620)
+	F.Intrinsic.Debug.SetLA("Order Header")
+	F.Intrinsic.Control.CallSub(Populate_order_h)
+F.Intrinsic.Control.ElseIf(V.Caller.Hook,=,27630)
+	F.Intrinsic.Debug.SetLA("Order Line")
+	F.Intrinsic.Control.CallSub(Populate_order_l)
+F.Intrinsic.Control.EndIf
+
+F.Intrinsic.Control.CallSub("Unload")
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("Main_err")
+	F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+		F.Intrinsic.String.Concat("Error occured ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+		F.Intrinsic.UI.Msgbox(V.Local.sError)
+	F.Intrinsic.Control.EndIf
+
+F.Intrinsic.Control.CallSub("Unload")
+
+Program.Sub.Main.End
+
+Program.Sub.Unload.Start
+F.ODBC.connection!conx.Close
+f.Intrinsic.Control.End
+
+Program.Sub.Unload.End
+
+Program.Sub.Populate_Order_H.Start
+V.Local.sQuery.Declare(String)
+V.Local.sError.Declare(String)
+
+F.Intrinsic.Control.SetErrorHandler("Populate_Order_H_err")
+F.Intrinsic.Control.ClearErrors
+
+F.Intrinsic.String.Concat("SELECT * FROM ORDER_HEADER WHERE ORDER_NO='",V.Global.sOrderNo,"' AND RECORD_TYPE='A'",V.Local.sQuery)
+F.ODBC.Connection!conx.OpenRecordsetRW("rstOrder",V.Local.sQuery)
+F.Intrinsic.Control.If(V.ODBC.conx!rstOrder.EOF,<>,True)
+	F.Intrinsic.Control.CallSub(Get_user_5)
+	F.Intrinsic.Control.If(V.args.User5,<>,"")
+		F.ODBC.conx!rstOrder.Set!USER_5(V.args.User5)
+		F.ODBC.conx!rstOrder.update
+		F.Intrinsic.Debug.Stop
+	F.Intrinsic.Control.EndIf
+F.Intrinsic.Control.EndIf
+F.ODBC.conx!rstOrder.Close
+
+F.Intrinsic.Control.CallSub(Write_h_notes)
+
+F.Intrinsic.Control.ExitSub
+F.Intrinsic.Control.Label("Populate_Order_H_err")
+	F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+		F.Intrinsic.String.Concat("Error occured ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+		F.Intrinsic.UI.Msgbox(V.Local.sError)
+	F.Intrinsic.Control.EndIf
+
+
+Program.Sub.Populate_Order_H.End
+
+Program.Sub.Populate_Order_L.Start
+V.Local.sError.Declare(String)
+V.Local.sQuery.Declare(String)
+V.Local.sPL.Declare(String)
+
+F.Intrinsic.Control.SetErrorHandler("Populate_Order_L_err")
+F.Intrinsic.Control.ClearErrors
+
+F.Intrinsic.String.Concat("SELECT * FROM V_ORDER_LINES WHERE ORDER_NO='",V.Global.sOrderNo,"' AND RECORD_NO='",V.Global.sOrderLine,"'",V.Local.sQuery)
+F.ODBC.Connection!conx.OpenRecordsetRW("rstLine",V.Local.sQuery)
+F.Intrinsic.Control.If(V.ODBC.conx!rstLine.EOF,<>,True)
+	F.Intrinsic.Debug.SetLA("Get first char of PL from INFO_2 and second char P")
+	F.Intrinsic.String.Left(V.ODBC.conx!rstLine.FieldValTrim!INFO_2,1,V.Local.sPL)
+	F.Intrinsic.Control.If(V.Local.sPL,<>,"")
+		F.Intrinsic.String.Concat(V.Local.sPL,"P",V.Local.sPL)
+		F.ODBC.conx!rstLine.Set!PRODUCT_LINE(V.Local.sPL)
+
+		F.Intrinsic.Control.CallSub(Get_gl,"PL",V.Local.sPL)
+		F.ODBC.conx!rstLine.Set!GL_ACCOUNT(V.Args.GL)
+	
+		F.ODBC.conx!rstLine.Update
+	F.Intrinsic.Control.EndIf
+F.Intrinsic.Control.EndIf
+F.ODBC.conx!rstLine.Close
+
+F.Intrinsic.Control.CallSub(Write_l_notes)
+
+F.Intrinsic.Control.ExitSub
+F.Intrinsic.Control.Label("Populate_Order_L_err")
+	F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+		F.Intrinsic.String.Concat("Error occured ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+		F.Intrinsic.UI.Msgbox(V.Local.sError)
+	F.Intrinsic.Control.EndIf
+
+Program.Sub.Populate_Order_L.End
+
+Program.Sub.Get_User_5.Start
+V.Local.sError.Declare(String)
+V.Local.sQuery.Declare(String)
+V.Local.sUser5.Declare(String)
+V.Local.sInspPoint.Declare(String)
+
+F.Intrinsic.Control.SetErrorHandler("Get_User_5_err")
+F.Intrinsic.Control.ClearErrors
+
+F.Intrinsic.String.Concat("SELECT * FROM ATG_EDI_USER_FIELD WHERE PO='",V.Global.sPO,"' AND NSN='",V.Global.sNSN,"'",V.Local.sQuery)
+F.ODBC.Connection!conx.OpenRecordsetRO("rstUserField",V.Local.sQuery)
+F.Intrinsic.Control.If(V.ODBC.conx!rstUserField.EOF,<>,True)
+	F.Intrinsic.String.Concat(V.ODBC.conx!rstUserField.FieldValTrim!INSP_POINT,",",V.ODBC.conx!rstUserField.FieldValTrim!ACCEPT_POINT,V.Local.sUser5)
+	F.Intrinsic.String.UCase(V.ODBC.conx!rstUserField.FieldValTrim!INSP_POINT,V.Local.sInspPoint)
+	F.Intrinsic.Control.If(V.Local.sInspPoint,=,"SOURCE")
+		F.Intrinsic.String.Concat(V.Local.sUser5,",",V.ODBC.conx!rstUserField.fieldvaltrim!INSP_ID,V.Local.sUser5)
+	F.Intrinsic.Control.EndIf
+F.Intrinsic.Control.EndIf
+F.ODBC.conx!rstUserField.Close
+
+F.Intrinsic.String.Left(V.Local.sUser5,30,V.Local.sUser5)
+F.Intrinsic.Variable.AddRV("User5",V.Local.sUser5)
+
+F.Intrinsic.Control.ExitSub
+F.Intrinsic.Control.Label("Get_User_5_err")
+	F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+		F.Intrinsic.String.Concat("Error occured ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+		F.Intrinsic.UI.Msgbox(V.Local.sError)
+	F.Intrinsic.Control.EndIf
+
+
+Program.Sub.Get_User_5.End
+
+Program.Sub.Write_L_Notes.Start
+V.Local.sError.Declare(String)
+V.Local.sQuery.Declare(String)
+V.Local.sNotes.Declare(String)
+V.Local.sNotes.Redim(-1,-1)
+V.Local.iUB.Declare(Long,-1)
+V.Local.iSeq.Declare(Long,0)
+V.Local.sSeq.Declare(String)
+V.Local.iC.Declare(Long)
+
+F.Intrinsic.Control.SetErrorHandler("Write_L_Notes_err")
+F.Intrinsic.Control.ClearErrors
+
+'F.Intrinsic.Control.If(V.Global.iOrderType,=,1)
+	F.Intrinsic.String.Concat("DELETE FROM ORDER_TEXT WHERE ORDER_NO='",V.Global.sOrderNo,"' AND ORDER_LINE='",V.Global.sOrderLine,"'",V.Local.sQuery)
+	F.ODBC.Connection!conx.Execute(V.Local.sQuery)
+'F.Intrinsic.Control.EndIf
+
+F.Intrinsic.Debug.SetLA("Get Notes from ATG_EDI_L_NOTES and build Notes array")
+F.Intrinsic.String.Concat("SELECT * FROM ATG_EDI_L_NOTES WHERE PO='",V.Global.sPO,"' AND NSN='",V.Global.sNSN,"' ORDER BY SEQ ASC",V.Local.sQuery)
+F.ODBC.connection!conx.OpenRecordsetRO("rstNotes",V.Local.sQuery)
+F.Intrinsic.Control.DoUntil(V.ODBC.conx!rstNotes.EOF,=,True)
+	F.Intrinsic.Debug.SetLA("Building to sNote array Line Note Seq ",V.ODBC.conx!rstNotes.FieldValTrim!SEQ,": ",V.ODBC.conx!rstNotes.FieldValTrim!NOTES)
+	F.Intrinsic.Math.Add(V.Local.iUB,1,V.Local.iUB)
+	F.Intrinsic.Control.If(V.Local.iUB,=,0)
+		V.Local.sNotes.Redim(0,0)
+	F.Intrinsic.Control.Else
+		V.Local.sNotes.RedimPreserve(0,V.Local.iUB)
+	F.Intrinsic.Control.EndIf
+	
+	V.Local.sNotes(v.Local.iUB).Set(V.ODBC.conx!rstNotes.FieldValTrim!NOTES)
+	
+	F.ODBC.conx!rstNotes.MoveNext
+F.Intrinsic.Control.Loop
+F.ODBC.conx!rstNotes.Close
+
+F.Intrinsic.Debug.SetLA("Writing notes from sNotes array to ORDER_TEXT")
+F.Intrinsic.String.Concat("SELECT * FROM ORDER_TEXT WHERE ORDER_NO='",V.Global.sOrderNo,"' AND ORDER_LINE='",V.Global.sOrderLine,"'",V.Local.sQuery)
+F.ODBC.Connection!conx.OpenRecordsetRW("rstNotes",V.Local.sQuery)
+F.Intrinsic.Control.For(V.Local.iC,0,V.Local.sNotes.UBound,1)
+	F.Intrinsic.Math.Add(V.Local.iSeq,1,V.Local.iSeq)
+	F.Intrinsic.String.LPad(V.Local.iSeq,"0",3,V.Local.sSeq)
+	
+	F.Intrinsic.Debug.SetLA("Writing to ORDER_TEXT seq ",V.Local.sSeq,":",V.Local.sNotes(v.Local.iC))
+	F.ODBC.conx!rstNotes.AddNew
+	F.ODBC.conx!rstNotes.Set!ORDER_NO(V.Global.sOrderNo)
+	F.ODBC.conx!rstNotes.Set!ORDER_SUFFIX("0000")
+	F.ODBC.conx!rstNotes.Set!ORDER_LINE(V.Global.sOrderLine)
+	F.ODBC.conx!rstNotes.Set!FLAG_SALES_ORDER("")
+	F.ODBC.conx!rstNotes.Set!FLAG_PACK_LIST("")
+	F.ODBC.conx!rstNotes.Set!FLAG_INVOICE("")
+	F.ODBC.conx!rstNotes.Set!FLAG_QUOTE("")
+	F.ODBC.conx!rstNotes.Set!FILLER1("")
+	F.ODBC.conx!rstNotes.Set!TEXT_SEQ(V.Local.sSeq)
+	F.ODBC.conx!rstNotes.Set!TEXT(V.Local.sNotes(v.Local.iC))
+	F.ODBC.conx!rstNotes.Set!FILLER2("")
+	F.ODBC.conx!rstNotes.Set!TEXT_TYPE("M")
+	F.ODBC.conx!rstNotes.Set!FILLER3("")
+	F.ODBC.conx!rstNotes.Update
+F.Intrinsic.Control.Next(V.Local.iC)
+F.ODBC.conx!rstNotes.Close
+
+F.Intrinsic.Control.ExitSub
+F.Intrinsic.Control.Label("Write_L_Notes_err")
+	F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+		F.Intrinsic.String.Concat("Error occured ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+		F.Intrinsic.UI.Msgbox(V.Local.sError)
+	F.Intrinsic.Control.EndIf
+
+
+
+
+Program.Sub.Write_L_Notes.End
+
+Program.Sub.Write_H_Notes.Start
+V.Local.sError.Declare(String)
+V.Local.sQuery.Declare(String)
+V.Local.sNotes.Declare(String)
+V.Local.sNotes.Redim(-1,-1)
+V.Local.iUB.Declare(Long,-1)
+V.Local.iSeq.Declare(Long,0)
+V.Local.sSeq.Declare(String)
+V.Local.iC.Declare(Long)
+
+F.Intrinsic.Control.SetErrorHandler("Write_H_Notes_err")
+F.Intrinsic.Control.ClearErrors
+
+'F.Intrinsic.Control.If(V.Global.iOrderType,=,1)
+	F.Intrinsic.String.Concat("DELETE FROM ORDER_TEXT WHERE ORDER_NO='",V.Global.sOrderNo,"' AND ORDER_LINE=''",V.Local.sQuery)
+	F.ODBC.Connection!conx.Execute(V.Local.sQuery)
+'F.Intrinsic.Control.EndIf
+
+F.Intrinsic.Debug.SetLA("Get Notes from ATG_EDI_H_NOTES and build Notes array")
+F.Intrinsic.String.Concat("SELECT * FROM ATG_EDI_H_NOTES WHERE PO='",V.Global.sPO,"' AND NSN='",V.Global.sNSN,"' ORDER BY SEQ ASC",V.Local.sQuery)
+F.ODBC.connection!conx.OpenRecordsetRO("rstNotes",V.Local.sQuery)
+F.Intrinsic.Control.DoUntil(V.ODBC.conx!rstNotes.EOF,=,True)
+	F.Intrinsic.Debug.SetLA("Building to sNote array Header Note Seq ",V.ODBC.conx!rstNotes.FieldValTrim!SEQ,": ",V.ODBC.conx!rstNotes.FieldValTrim!NOTES)
+	F.Intrinsic.Math.Add(V.Local.iUB,1,V.Local.iUB)
+	F.Intrinsic.Control.If(V.Local.iUB,=,0)
+		V.Local.sNotes.Redim(0,0)
+	F.Intrinsic.Control.Else
+		V.Local.sNotes.RedimPreserve(0,V.Local.iUB)
+	F.Intrinsic.Control.EndIf
+	
+	V.Local.sNotes(v.Local.iUB).Set(V.ODBC.conx!rstNotes.FieldValTrim!NOTES)
+	
+	F.ODBC.conx!rstNotes.MoveNext
+F.Intrinsic.Control.Loop
+F.ODBC.conx!rstNotes.Close
+
+F.Intrinsic.Debug.SetLA("Writing notes from sNotes array to ORDER_TEXT")
+F.Intrinsic.String.Concat("SELECT * FROM ORDER_TEXT WHERE ORDER_NO='",V.Global.sOrderNo,"' AND ORDER_LINE=''",V.Local.sQuery)
+F.ODBC.Connection!conx.OpenRecordsetRW("rstNotes",V.Local.sQuery)
+F.Intrinsic.Control.For(V.Local.iC,0,V.Local.sNotes.UBound,1)
+	F.Intrinsic.Math.Add(V.Local.iSeq,1,V.Local.iSeq)
+	F.Intrinsic.String.LPad(V.Local.iSeq,"0",3,V.Local.sSeq)
+	
+	F.Intrinsic.Debug.SetLA("Writing to ORDER_TEXT seq ",V.Local.sSeq,":",V.Local.sNotes(v.Local.iC))
+	F.ODBC.conx!rstNotes.AddNew
+	F.ODBC.conx!rstNotes.Set!ORDER_NO(V.Global.sOrderNo)
+	F.ODBC.conx!rstNotes.Set!ORDER_SUFFIX("0000")
+	F.ODBC.conx!rstNotes.Set!ORDER_LINE("")
+	F.ODBC.conx!rstNotes.Set!FLAG_SALES_ORDER("Y")
+	F.ODBC.conx!rstNotes.Set!FLAG_PACK_LIST("Y")
+	F.ODBC.conx!rstNotes.Set!FLAG_INVOICE("Y")
+	F.ODBC.conx!rstNotes.Set!FLAG_QUOTE("Y")
+	F.ODBC.conx!rstNotes.Set!FILLER1("Y")
+	F.ODBC.conx!rstNotes.Set!TEXT_SEQ(V.Local.sSeq)
+	F.ODBC.conx!rstNotes.Set!TEXT(V.Local.sNotes(v.Local.iC))
+	F.ODBC.conx!rstNotes.Set!FILLER2("")
+	F.ODBC.conx!rstNotes.Set!TEXT_TYPE("M")
+	F.ODBC.conx!rstNotes.Set!FILLER3("")
+	F.ODBC.conx!rstNotes.Update
+F.Intrinsic.Control.Next(V.Local.iC)
+F.ODBC.conx!rstNotes.Close
+
+F.Intrinsic.Control.ExitSub
+F.Intrinsic.Control.Label("Write_H_Notes_err")
+	F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+		F.Intrinsic.String.Concat("Error occured ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+		F.Intrinsic.UI.Msgbox(V.Local.sError)
+	F.Intrinsic.Control.EndIf
+
+
+
+Program.Sub.Write_H_Notes.End
+
+Program.Sub.Get_GL.Start
+V.Local.sError.Declare(String)
+V.Local.sQuery.Declare(String)
+V.Local.sGL.Declare(String)
+
+F.Intrinsic.Control.SetErrorHandler("Get_GL_err")
+F.Intrinsic.Control.ClearErrors
+
+F.Intrinsic.String.Concat("SELECT * FROM V_PRODUCT_LINE WHERE PRODUCT_LINE='",V.args.PL,"'",V.Local.sQuery)
+F.ODBC.Connection!conx.OpenRecordsetRO("rstGL",V.Local.sQuery)
+F.Intrinsic.Control.If(V.ODBC.conx!rstGL.EOF,<>,True)
+	V.Local.sGL.Set(V.ODBC.conx!rstGL.FieldValTrim!SALES_ACCOUNT)
+F.Intrinsic.Control.EndIf
+F.ODBC.conx!rstGL.Close
+
+F.Intrinsic.Variable.AddRV("GL",V.Local.sGL)
+
+F.Intrinsic.Control.ExitSub
+F.Intrinsic.Control.Label("Get_GL_err")
+	F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+		F.Intrinsic.String.Concat("Error occured ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+		F.Intrinsic.UI.Msgbox(V.Local.sError)
+	F.Intrinsic.Control.EndIf
+
+
+
+Program.Sub.Get_GL.End
+
+
